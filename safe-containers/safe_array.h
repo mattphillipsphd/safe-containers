@@ -61,7 +61,7 @@ class SafeArray
                 }
                 bool operator!=(const self_type& rhs)
                 {
-                    return _ptr != rhs._ptr;
+                    return !(*this == rhs);
                 }
             private:
                 pointer _ptr;
@@ -95,51 +95,43 @@ class SafeArray
                     _pause{50},
                     _iter_mode{iter_mode}
                 {
+#ifdef DEBUG_SAFE
+                    ScopeTracker st{"safe_iterator::safe_iterator"};
+#endif
                     _access_ctr->add_thread();
-                    _update_counters();
-                    std::cout << "safe_iterator::safe_iterator" << std::endl;
+                    _update_counters(1);
                 }
 
                 safe_iterator(const safe_iterator& rhs) 
                 {
+#ifdef DEBUG_SAFE
+                    ScopeTracker st{"safe_iterator::<copy ctor>"};
+#endif
                     _copy_data(rhs);
-                    _update_counters();
+                    _update_counters(1);
                 }
                 safe_iterator(safe_iterator&&) = default;
                 safe_iterator& operator=(const safe_iterator& rhs)
                 {
+#ifdef DEBUG_SAFE
+                    ScopeTracker st{"safe_iterator::operator="};
+#endif
                     _copy_data(rhs);
-                    _update_counters();
+                    _update_counters(1);
                 }
                 safe_iterator& operator=(safe_iterator&&) = default;
                 ~safe_iterator()
                 {
-                    switch (_iter_mode)
-                    {
-                        case ITER_MODE::READ:
-                            _access_ctr->reader_sub();
-                            break;
-                        case ITER_MODE::READ_WRITE:
-                            _access_ctr->reader_sub();
-                            _access_ctr->writer_sub();
-                            break;
-                        default:
-                            break;
-                    }
-                    std::string const s = "safe_iterator::~safe_iterator, "
-                        "_reader_ct: " 
-                        + std::to_string( _access_ctr->get_reader_ct() );
-                    std::cout << s << std::endl;
+#ifdef DEBUG_SAFE
+                    ScopeTracker st{"safe_iterator::~safe_iterator"};
+#endif
+                    _update_counters(-1);
                     _writer_cv->notify_all();
                 }
 
-                // Look at cpp20 no-op overloads, there is a way around this
-                // TODO TODO This creates new iterators constantly
                 self_type operator++(int)
                 {
-                    self_type iter{_ptr, *_writer_cv, *_access_ctr};
-                        // Essentially have to copy by hand since copy ctor
-                        // deleted
+                    self_type iter = *this;
                     _ptr++;
                     std::this_thread::sleep_for(_pause);
                     return iter;
@@ -169,7 +161,7 @@ class SafeArray
                 }
                 bool operator!=(const self_type& rhs)
                 {
-                    return _ptr != rhs._ptr;
+                    return !(*this == rhs);
                 }
 
             private:
@@ -181,23 +173,33 @@ class SafeArray
                     _pause = other._pause;
                     _iter_mode = other._iter_mode;
                 }
-                void _update_counters()
+                void _update_counters(int update)
                 {
+#ifdef DEBUG_SAFE
+                    ScopeTracker st{"safe_iterator::_update_counters"};
+#endif
                     switch (_iter_mode)
                     {
                         case ITER_MODE::READ:
-                            _access_ctr->reader_add();
+                            _access_ctr->reader_update(update);
                             break;
                         case ITER_MODE::READ_WRITE:
-                            _access_ctr->reader_add();
-                            _access_ctr->writer_add();
+                            _access_ctr->reader_update(update);
+                            _access_ctr->writer_update(update);
                             break;
                         default:
                             break;
                     }
+#ifdef DEBUG_SAFE
+                    const std::string s = "Reader ct: " 
+                        + std::to_string(_access_ctr->get_reader_ct())
+                        + ", writer ct: "
+                        + std::to_string(_access_ctr->get_writer_ct());
+                    st.Add(s);
+#endif
                 }
-                pointer _ptr;
 
+                pointer _ptr;
                 AccessCtr* _access_ctr;
                 std::condition_variable* _writer_cv;
                 std::chrono::milliseconds _pause;
@@ -222,20 +224,50 @@ class SafeArray
         iterator unsafe_begin() { return iterator(_data); }
         iterator unsafe_end() { return iterator(_data + _size); }
 
-        safe_iterator cbegin() { return safe_read_iterator(0); }
-        safe_iterator cend() { return safe_read_iterator(_size); }
-        safe_iterator begin() { return safe_rw_iterator(0); }
-        safe_iterator end() { return safe_rw_iterator(_size); }
+        safe_iterator cbegin() 
+        {
+#ifdef DEBUG_SAFE
+            ScopeTracker::InitThread();
+            ScopeTracker st{"cbegin"};
+#endif
+            return safe_read_iterator(0);
+        }
+        safe_iterator cend() 
+        {
+#ifdef DEBUG_SAFE
+            ScopeTracker st{"cend"};
+#endif
+            return safe_read_iterator(_size);
+        }
+        safe_iterator begin() 
+        {
+#ifdef DEBUG_SAFE
+            ScopeTracker::InitThread();
+            ScopeTracker st{"begin"};
+#endif
+            return safe_rw_iterator(0);
+        }
+        safe_iterator end() 
+        {
+#ifdef DEBUG_SAFE
+            ScopeTracker st{"end"};
+#endif
+            return safe_rw_iterator(_size);
+        }
 
         int get_writer_ct() const 
         {
-            const thread_id tid{ std::this_thread::get_id() };
-            return _access_ctr.get_writer_ct(tid);
+#ifdef DEBUG_SAFE
+            ScopeTracker st{"get_writer_ct"};
+#endif
+            return _access_ctr.get_writer_ct();
         }
         int get_reader_ct() const 
         {
-            const thread_id tid{ std::this_thread::get_id() };
-            return _access_ctr.get_reader_ct(tid);
+#ifdef DEBUG_SAFE
+            ScopeTracker st{"get_reader_ct"};
+#endif
+            return _access_ctr.get_reader_ct();
         }
 
     private:

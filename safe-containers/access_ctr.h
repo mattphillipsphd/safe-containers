@@ -28,6 +28,22 @@ class AccessCtr
             _dict.erase(tid);
         }
 
+        void reader_update( int update,
+                thread_id tid=std::this_thread::get_id() )
+        {
+#ifdef DEBUG_ACCESS
+            ScopeTracker st{"reader_update"};
+#endif
+            _dict.at(tid).reader_ct += update;
+        }
+        void writer_update( int update,
+                thread_id tid=std::this_thread::get_id() )
+        {
+#ifdef DEBUG_ACCESS
+            ScopeTracker st{"writer_update"};
+#endif
+            _dict.at(tid).writer_ct += update;
+        }
         void reader_add( thread_id tid=std::this_thread::get_id() )
         {
 #ifdef DEBUG_ACCESS

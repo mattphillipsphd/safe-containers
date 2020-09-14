@@ -1,6 +1,7 @@
 #ifndef ACCESS_CTR_H
 #define ACCESS_CTR_H
 
+#include <mutex>
 #include <unordered_map>
 
 #include "../scopetracker.h"
@@ -17,14 +18,19 @@ class AccessCtr
             ScopeTracker::InitThread();
             ScopeTracker st{"add_thread"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             if ( !_dict.contains(tid) )
                 _dict.emplace( std::make_pair(tid, Counters()) );
+#ifdef DEBUG_ACCESS
+            st.Add(std::to_string(_dict.size())+" threads in Access Counter");
+#endif
         }
         void remove_thread( thread_id tid=std::this_thread::get_id() )
         {
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"remove_thread"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             _dict.erase(tid);
         }
 
@@ -34,6 +40,7 @@ class AccessCtr
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"reader_update"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             _dict.at(tid).reader_ct += update;
         }
         void writer_update( int update,
@@ -42,36 +49,8 @@ class AccessCtr
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"writer_update"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             _dict.at(tid).writer_ct += update;
-        }
-        void reader_add( thread_id tid=std::this_thread::get_id() )
-        {
-#ifdef DEBUG_ACCESS
-            ScopeTracker st{"reader_add"};
-#endif
-            _dict.at(tid).reader_ct += 1;
-        }
-        void reader_sub( thread_id tid=std::this_thread::get_id() )
-        {
-#ifdef DEBUG_ACCESS
-            ScopeTracker st{"reader_sub"};
-#endif
-            _dict.at(tid).reader_ct -= 1;
-        }
-
-        void writer_add( thread_id tid=std::this_thread::get_id() ) 
-        {
-#ifdef DEBUG_ACCESS
-            ScopeTracker st{"writer_add"};
-#endif
-            _dict.at(tid).writer_ct += 1;
-        }
-        void writer_sub( thread_id tid=std::this_thread::get_id() )
-        {
-#ifdef DEBUG_ACCESS
-            ScopeTracker st{"writer_sub"};
-#endif
-            _dict.at(tid).writer_ct -= 1;
         }
 
         int get_reader_ct( thread_id tid=std::this_thread::get_id() ) const
@@ -79,6 +58,7 @@ class AccessCtr
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"get_reader_ct"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             if ( !_dict.contains(tid) )
                 return 0;
             return _dict.at(tid).reader_ct;
@@ -88,6 +68,7 @@ class AccessCtr
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"get_writer_ct"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             if ( !_dict.contains(tid) )
                 return 0;
             return _dict.at(tid).writer_ct;
@@ -98,6 +79,7 @@ class AccessCtr
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"get_has_other_readers"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             bool has_other_readers{false};
             for (const auto& [key, value] : _dict)
             {
@@ -117,6 +99,7 @@ class AccessCtr
 #ifdef DEBUG_ACCESS
             ScopeTracker st{"get_has_other_writers"};
 #endif
+            std::lock_guard<std::mutex> lock(_mutex);
             bool has_other_writers{false};
             for (const auto& [key, value] : _dict)
             {
@@ -140,6 +123,7 @@ class AccessCtr
         };
 
         std::unordered_map<thread_id, Counters> _dict;
+        mutable std::mutex _mutex;
 };
 
 #endif // ACCESS_CTR_H

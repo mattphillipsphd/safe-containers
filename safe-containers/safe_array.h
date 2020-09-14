@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -87,10 +88,10 @@ class SafeArray
                 typedef int difference_type;
 
                 safe_iterator(pointer ptr, std::condition_variable& writer_cv,
-                        AccessCtr& access_ctr,
+                        std::shared_ptr<AccessCtr> access_ctr,
                         ITER_MODE iter_mode=ITER_MODE::READ) 
                     : _ptr(ptr),
-                    _access_ctr{&access_ctr},
+                    _access_ctr{access_ctr},
                     _writer_cv{&writer_cv},
                     _pause{50},
                     _iter_mode{iter_mode}
@@ -200,7 +201,7 @@ class SafeArray
                 }
 
                 pointer _ptr;
-                AccessCtr* _access_ctr;
+                std::shared_ptr<AccessCtr> _access_ctr;
                 std::condition_variable* _writer_cv;
                 std::chrono::milliseconds _pause;
                 ITER_MODE _iter_mode;
@@ -208,6 +209,7 @@ class SafeArray
 
         SafeArray(size_type size) 
             : _size(size),
+            _access_ctr{ new AccessCtr() },
             _data{ new T[size] }
         {}
 
@@ -260,14 +262,14 @@ class SafeArray
 #ifdef DEBUG_SAFE
             ScopeTracker st{"get_writer_ct"};
 #endif
-            return _access_ctr.get_writer_ct();
+            return _access_ctr->get_writer_ct();
         }
         int get_reader_ct() const 
         {
 #ifdef DEBUG_SAFE
             ScopeTracker st{"get_reader_ct"};
 #endif
-            return _access_ctr.get_reader_ct();
+            return _access_ctr->get_reader_ct();
         }
 
     private:
@@ -275,8 +277,8 @@ class SafeArray
         {
             std::unique_lock<std::mutex> lock{_mutex};
             _cond_var.wait(lock, [this]{
-                    return !_access_ctr.get_has_other_writers()
-                            && !_access_ctr.get_has_other_readers();
+                    return !_access_ctr->get_has_other_writers()
+                            && !_access_ctr->get_has_other_readers();
                     });
             safe_iterator safe_iter = safe_iterator{_data+offset, _cond_var,
                 _access_ctr, safe_iterator::ITER_MODE::READ_WRITE};
@@ -286,7 +288,7 @@ class SafeArray
         {
             std::unique_lock<std::mutex> lock{_mutex};
             _cond_var.wait(lock, [this]{
-                    return !_access_ctr.get_has_other_writers();
+                    return !_access_ctr->get_has_other_writers();
                     });
             safe_iterator safe_iter = safe_iterator{_data+offset, _cond_var,
                 _access_ctr};
@@ -296,7 +298,7 @@ class SafeArray
         T* _data;
         size_type _size;
 
-        AccessCtr _access_ctr;
+        std::shared_ptr<AccessCtr> _access_ctr;
 
         mutable std::condition_variable _cond_var;
         mutable std::mutex _mutex;

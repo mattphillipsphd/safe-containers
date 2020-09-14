@@ -7,6 +7,8 @@
 #include <sstream>
 #include <thread>
 
+#include "log.h"
+
 class ScopeTracker
 {
     public:
@@ -15,12 +17,13 @@ class ScopeTracker
             : _name(name),
             _startTime(std::chrono::steady_clock::now()),
             _tab(MakeTab(tid)),
-            _tid(tid)
+            _tid(tid),
+            _log{ Log::instance() }
         {
             std::stringstream ss;
             ss << _tid;
-            const std::string s = ss.str() + _tab + "Entered " + _name;
-            std::cout << s << std::endl;
+            const std::string s = ss.str() + _tab + "Entered " + _name + "\n";
+            _log.write(s);
             std::lock_guard<std::mutex> lock(_mutex);
             ++_tabCts[_tid];
         }
@@ -31,8 +34,8 @@ class ScopeTracker
             ss << _tid;
             const std::string s = ss.str() + _tab + "Exited " 
                 + _name + _add + " after " 
-                + std::to_string(ElapsedMs()) + "ms";
-            std::cout << s << std::endl;
+                + std::to_string(ElapsedMs()) + "ms\n";
+            _log.write(s);
             std::lock_guard<std::mutex> lock(_mutex);
             --_tabCts[_tid];
         }
@@ -69,6 +72,7 @@ class ScopeTracker
         static std::map<std::thread::id, int> _tabCts;
         const std::string _tab;
         const std::thread::id _tid;
+        Log& _log;
 };
 
 std::mutex ScopeTracker::_mutex;

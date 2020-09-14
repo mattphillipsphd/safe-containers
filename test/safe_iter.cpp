@@ -1,10 +1,6 @@
 #include <algorithm>
 #include <cassert>
 #include <chrono>
-#include <concepts>
-#include <deque>
-#include <fstream>
-#include <functional>
 #include <iostream>
 #include <iterator>
 // #include <latch>
@@ -12,6 +8,7 @@
 #include <thread>
 #include <vector>
 
+#include "../log.h"
 #include "../safe-containers/safe_array.h"
 
 using namespace std::chrono_literals;
@@ -37,16 +34,18 @@ int main(int argc, char** argv)
     using SA = SafeArray<int>;
     SA sa{N};
 
-    auto writer = [&sa]{ 
+    Log& log = Log::instance(std::cout);
+
+    auto writer = [&sa, &log]{ 
         int ct = 0;
         for (auto it=sa.unsafe_begin(); it!=sa.unsafe_end(); ++it)
             *it = ct++;
     };
 
-    auto reader = [&sa]{
+    auto reader = [&sa, &log]{
         for (auto it=sa.unsafe_begin(); it!=sa.unsafe_end(); ++it)
-            std::cout << *it << ", ";
-        std::cout << std::endl;
+            log.write( *it + ", " );
+        log.write("\n");
     };
 
     std::cout << "Starting thread-UNSAFE iteration, may take a few seconds ..."
@@ -59,32 +58,33 @@ int main(int argc, char** argv)
     std::cout << "...Done" << std::endl;
 
 
-    auto safe_writer = [&sa]{ 
+    auto safe_writer = [&sa, &log]
+    { 
         int ct = 0;
         const auto sa_begin = sa.begin();
         const auto sa_end = sa.end();
-        const std::string s = sa.get_writer_ct() + "Writers, writing... ";
-        std::cout << s << std::endl;
+        const std::string s = std::to_string(sa.get_writer_ct())
+            + "Writers, writing...\n";
+        log.write(s);
         for (auto it=sa_begin; it!=sa_end; ++it)
             *it = 100*ct++;
-        std::cout << "...Writing done" << std::endl;
+        log.write("...Writing done\n");
     };
 
-    auto safe_reader = [&sa]{
+    auto safe_reader = [&sa, &log]
+    {
         const auto sa_cbegin = sa.cbegin();
-        const auto sa_cend = sa.end();
+        const auto sa_cend = sa.cend();
         std::string const s = "Reader count: " 
-            + std::to_string(sa.get_reader_ct());
-        std::cout << s << std::endl;
+            + std::to_string(sa.get_reader_ct()) + "\n";
+        log.write(s);
+        std::string s2;
         for (auto it=sa_cbegin; it!=sa_cend; ++it)
-        {
-            std::string const s = *it + ", ";
-            std::cout << s;
-        }
-        std::cout << std::endl;
+            s2 += *it + ", ";
+        s2 += "\n";
+        log.write(s2);
     };
 
-    /*
     std::cout << "Starting thread-safe iteration, may take a few seconds ..."
         << std::endl;
     std::jthread safe_write{safe_writer};
@@ -93,7 +93,6 @@ int main(int argc, char** argv)
     safe_write.detach();
     safe_read.join();
     std::cout << "...Done" << std::endl;
-*/
 
     std::cout << "Now, multiple reads and a write. Jumbled output is okay "
         "as long as all numbers displayed, and the writer is either first "

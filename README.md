@@ -1,0 +1,4 @@
+Access to container elements can be made thread-safe in a straightforward way with mutexes, but this is not useful in the common situation where one wants to iterate over the elements in a container in a thread-safe way.  That is, we want a container to be modifiable in separate threads, but we want mutex protection to cover the entire duration of iteration, not individual element reads or writes.  Otherwise, two concurrent iterations produce undefined results even if they are 'thread-safe' at the individual level.
+
+So, 'Safe Containers' are designed to meet this need.  For a given container, there can be exactly one thread with read/write iterators; or many threads all with read iterators only.  There is no random write access (operator[]) but otherwise the semantics of these containers follows that of STL containers (partially implemented atm).
+

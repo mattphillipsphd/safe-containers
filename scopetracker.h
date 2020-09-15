@@ -22,7 +22,7 @@ class ScopeTracker
         {
             std::stringstream ss;
             ss << _tid;
-            const std::string s = ss.str() + _tab + "Entered " + _name + "\n";
+            const std::string s = ss.str() + _tab + "Entered " + _name;
             _log.write(s);
             std::lock_guard<std::mutex> lock(_mutex);
             ++_tabCts[_tid];
@@ -34,7 +34,7 @@ class ScopeTracker
             ss << _tid;
             const std::string s = ss.str() + _tab + "Exited " 
                 + _name + _add + " after " 
-                + std::to_string(ElapsedMs()) + "ms\n";
+                + std::to_string(ElapsedMs()) + "ms";
             _log.write(s);
             std::lock_guard<std::mutex> lock(_mutex);
             --_tabCts[_tid];

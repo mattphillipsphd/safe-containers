@@ -11,6 +11,12 @@ class AccessCtr
     public:
         using thread_id = std::thread::id;
         AccessCtr() = default;
+        ~AccessCtr()
+        {
+#ifdef DEBUG_ACCESS
+            ScopeTracker st{"~AccessCtr"};
+#endif
+        }
 
         void add_thread( thread_id tid=std::this_thread::get_id() ) 
         {

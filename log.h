@@ -26,16 +26,22 @@ class Log
             return _ostm << mesg;
         }
 */
-        void write(std::string const& mesg)
+        void add(std::string const& mesg)
+        {
+            _buffer += mesg;
+        }
+        void write(std::string mesg="")
         {
             std::lock_guard<std::mutex> lock{_mutex};
-            _ostm << mesg << std::endl;
+            _ostm << _buffer << mesg << std::endl << std::flush;
+            _buffer = "";
         }
 
     private:
         Log(std::ostream& ostm) : _ostm{ostm} {}
 
         static Log* _instance;
+        std::string _buffer;
         std::ostream& _ostm;
         std::mutex _mutex;
 };

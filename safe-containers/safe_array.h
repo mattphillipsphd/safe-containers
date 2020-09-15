@@ -35,7 +35,7 @@ class SafeArray
                     : _ptr(ptr),
                     _pause{50}
                 {}
-                self_type operator++()
+                self_type operator++(int)
                 {
                     self_type i = *this;
                     _ptr++;
@@ -43,7 +43,7 @@ class SafeArray
                             std::chrono::milliseconds(_pause) );
                     return i;
                 }
-                self_type operator++(int)
+                self_type operator++()
                 {
                     _ptr++;
                     std::this_thread::sleep_for(
@@ -211,7 +211,19 @@ class SafeArray
             : _size(size),
             _access_ctr{ new AccessCtr() },
             _data{ new T[size] }
-        {}
+        {
+#ifdef DEBUG_SAFE
+            ScopeTracker st{"SafeArray"};
+#endif
+        }
+
+        ~SafeArray()
+        {
+#ifdef DEBUG_SAFE
+            ScopeTracker st{"~SafeArray"};
+#endif
+            delete[] _data;
+        }
 
         size_type size() const { return _size; }
 

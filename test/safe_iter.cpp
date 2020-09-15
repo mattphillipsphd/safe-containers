@@ -13,15 +13,6 @@
 
 using namespace std::chrono_literals;
 
-// Design goals: RAII iterators that are always valid wrt concurrency.  Only
-// the following situations are possible:
-// 1) No iterators exist
-// 2) Exactly one write iterator exists
-// 3) Multiple read iterators exist
-//
-// Or, behavior which in some respect achieves the same objective.
-// But a factory method which blocks as long as the situation is invalid seems
-// like a reasonable way to go.
 // Starting off modifying https://gist.github.com/jeetsukumaran/307264
 
 template<class T>unsigned char identify(T&& v) {return v;}
@@ -44,7 +35,7 @@ int main(int argc, char** argv)
 
     auto reader = [&sa, &log]{
         for (auto it=sa.unsafe_begin(); it!=sa.unsafe_end(); ++it)
-            log.write( *it + ", " );
+            log.add( std::to_string(*it) + ", " );
         log.write("\n");
     };
 
@@ -53,7 +44,7 @@ int main(int argc, char** argv)
     std::jthread write{writer};
     std::jthread read{reader};
 
-    write.detach();
+    write.join();
     read.join();
     std::cout << "...Done" << std::endl;
 
@@ -64,11 +55,11 @@ int main(int argc, char** argv)
         const auto sa_begin = sa.begin();
         const auto sa_end = sa.end();
         const std::string s = std::to_string(sa.get_writer_ct())
-            + "Writers, writing...\n";
+            + " writers, writing...";
         log.write(s);
         for (auto it=sa_begin; it!=sa_end; ++it)
-            *it = 100*ct++;
-        log.write("...Writing done\n");
+            *it = ct++;
+        log.write("...Writing done");
     };
 
     auto safe_reader = [&sa, &log]
@@ -78,11 +69,9 @@ int main(int argc, char** argv)
         std::string const s = "Reader count: " 
             + std::to_string(sa.get_reader_ct()) + "\n";
         log.write(s);
-        std::string s2;
         for (auto it=sa_cbegin; it!=sa_cend; ++it)
-            s2 += *it + ", ";
-        s2 += "\n";
-        log.write(s2);
+            log.add( std::to_string(*it) + ", " );
+        log.write();
     };
 
     std::cout << "Starting thread-safe iteration, may take a few seconds ..."
@@ -90,13 +79,18 @@ int main(int argc, char** argv)
     std::jthread safe_write{safe_writer};
     std::jthread safe_read{safe_reader};
 
-    safe_write.detach();
+    safe_write.join();
     safe_read.join();
     std::cout << "...Done" << std::endl;
 
     std::cout << "Now, multiple reads and a write. Jumbled output is okay "
         "as long as all numbers displayed, and the writer is either first "
         "or last." << std::endl;
+
+    // Initialize with new values:
+    int ct = 0;
+    for (auto it=sa.begin(); it!=sa.end(); ++it)
+        *it = 100*ct++;
 
 /* When there is compiler support for std::latch ...
     int const NUM_THREADS = 5;
@@ -124,10 +118,10 @@ int main(int argc, char** argv)
     std::jthread safe_read_3{safe_reader};
     std::jthread safe_read_4{safe_reader};
 
-    safe_read_1.detach();
-    safe_read_2.detach();
-    safe_write_1.detach();
-    safe_read_3.detach();
+    safe_read_1.join();
+    safe_read_2.join();
+    safe_write_1.join();
+    safe_read_3.join();
     safe_read_4.join();
     std::cout << "...Done" << std::endl;
 

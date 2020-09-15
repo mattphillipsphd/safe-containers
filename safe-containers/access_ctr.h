@@ -1,7 +1,9 @@
 #ifndef ACCESS_CTR_H
 #define ACCESS_CTR_H
 
+#include <cassert>
 #include <mutex>
+#include <ranges>
 #include <unordered_map>
 
 #include "../scopetracker.h"
@@ -37,6 +39,7 @@ class AccessCtr
             ScopeTracker st{"remove_thread"};
 #endif
             std::lock_guard<std::mutex> lock(_mutex);
+            assert( _dict.contains(tid) );
             _dict.erase(tid);
         }
 
@@ -59,6 +62,28 @@ class AccessCtr
             _dict.at(tid).writer_ct += update;
         }
 
+        int get_all_reader_ct( thread_id tid=std::this_thread::get_id() ) const
+        {
+#ifdef DEBUG_ACCESS
+            ScopeTracker st{"get_all_reader_ct"};
+#endif
+            std::lock_guard<std::mutex> lock(_mutex);
+            int all_reader_ct{0};
+            for (auto&& it : _dict | std::views::values)
+                all_reader_ct += it.reader_ct;
+            return all_reader_ct;
+        }
+        int get_all_writer_ct( thread_id tid=std::this_thread::get_id() ) const
+        {
+#ifdef DEBUG_ACCESS
+            ScopeTracker st{"get_all_writer_ct"};
+#endif
+            std::lock_guard<std::mutex> lock(_mutex);
+            int all_writer_ct{0};
+            for (auto&& it : _dict | std::views::values)
+                all_writer_ct += it.writer_ct;
+            return all_writer_ct;
+        }
         int get_reader_ct( thread_id tid=std::this_thread::get_id() ) const
         {
 #ifdef DEBUG_ACCESS
@@ -79,26 +104,6 @@ class AccessCtr
                 return 0;
             return _dict.at(tid).writer_ct;
         }
-        bool get_has_other_readers( thread_id tid=std::this_thread::get_id() )
-            const
-        {
-#ifdef DEBUG_ACCESS
-            ScopeTracker st{"get_has_other_readers"};
-#endif
-            std::lock_guard<std::mutex> lock(_mutex);
-            bool has_other_readers{false};
-            for (const auto& [key, value] : _dict)
-            {
-                if (key == tid)
-                    continue;
-                if (value.reader_ct > 0)
-                {
-                    has_other_readers = true;
-                    break;
-                }
-            }
-            return has_other_readers;
-        }
         bool get_has_other_writers( thread_id tid=std::this_thread::get_id() )
             const
         {
@@ -118,6 +123,26 @@ class AccessCtr
                 }
             }
             return has_other_writers;
+        }
+        bool get_has_other_accessors(thread_id tid=std::this_thread::get_id())
+            const
+        {
+#ifdef DEBUG_ACCESS
+            ScopeTracker st{"get_has_other_accessors"};
+#endif
+            std::lock_guard<std::mutex> lock(_mutex);
+            bool has_other_accessors{false};
+            for (const auto& [key, value] : _dict)
+            {
+                if (key == tid)
+                    continue;
+                if (value.reader_ct > 0 || value.writer_ct > 0)
+                {
+                    has_other_accessors = true;
+                    break;
+                }
+            }
+            return has_other_accessors;
         }
 
     private:

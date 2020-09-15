@@ -67,7 +67,7 @@ int main(int argc, char** argv)
         const auto sa_cbegin = sa.cbegin();
         const auto sa_cend = sa.cend();
         std::string const s = "Reader count: " 
-            + std::to_string(sa.get_reader_ct()) + "\n";
+            + std::to_string(sa.get_reader_ct());
         log.write(s);
         for (auto it=sa_cbegin; it!=sa_cend; ++it)
             log.add( std::to_string(*it) + ", " );

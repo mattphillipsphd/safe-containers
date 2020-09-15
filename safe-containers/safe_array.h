@@ -20,6 +20,8 @@ class SafeArray
         typedef int size_type;
         typedef std::atomic<int> count_type;
         typedef std::atomic<bool> flag_type;
+        typedef std::shared_ptr<AccessCtr> AccessCtrPtr;
+        typedef std::shared_ptr<std::condition_variable> CondVarPtr;
         using thread_id = AccessCtr::thread_id;
 
         class iterator
@@ -39,15 +41,19 @@ class SafeArray
                 {
                     self_type i = *this;
                     _ptr++;
+#ifdef DEMO
                     std::this_thread::sleep_for(
                             std::chrono::milliseconds(_pause) );
+#endif
                     return i;
                 }
                 self_type operator++()
                 {
                     _ptr++;
+#ifdef DEMO
                     std::this_thread::sleep_for(
                             std::chrono::milliseconds(_pause) );
+#endif
                     return *this;
                 }
                 reference operator*() { return *_ptr; }
@@ -87,14 +93,15 @@ class SafeArray
                 typedef std::forward_iterator_tag iterator_category;
                 typedef int difference_type;
 
-                safe_iterator(pointer ptr, std::condition_variable& writer_cv,
-                        std::shared_ptr<AccessCtr> access_ctr,
+                safe_iterator(pointer ptr, CondVarPtr cond_var,
+                        AccessCtrPtr access_ctr, std::mutex& mutex,
                         ITER_MODE iter_mode=ITER_MODE::READ) 
                     : _ptr(ptr),
                     _access_ctr{access_ctr},
-                    _writer_cv{&writer_cv},
+                    _cond_var{cond_var},
                     _pause{50},
-                    _iter_mode{iter_mode}
+                    _iter_mode{iter_mode},
+                    _mutex{&mutex}
                 {
 #ifdef DEBUG_SAFE
                     ScopeTracker st{"safe_iterator::safe_iterator"};
@@ -111,7 +118,7 @@ class SafeArray
                     _copy_data(rhs);
                     _update_counters(1);
                 }
-                safe_iterator(safe_iterator&&) = default;
+                safe_iterator(safe_iterator&&) = delete;
                 safe_iterator& operator=(const safe_iterator& rhs)
                 {
 #ifdef DEBUG_SAFE
@@ -120,59 +127,60 @@ class SafeArray
                     _copy_data(rhs);
                     _update_counters(1);
                 }
-                safe_iterator& operator=(safe_iterator&&) = default;
+                safe_iterator& operator=(safe_iterator&&) = delete;
                 ~safe_iterator()
                 {
 #ifdef DEBUG_SAFE
                     ScopeTracker st{"safe_iterator::~safe_iterator"};
 #endif
+                    std::lock_guard<std::mutex> lock{ *_mutex };
                     _update_counters(-1);
-                    _writer_cv->notify_all();
+                    _cond_var->notify_all();
+#ifdef DEBUG_SAFE
+                    const std::string s = "Total reader, writer cts: " 
+                        + std::to_string(_access_ctr->get_all_reader_ct())
+                        + ","
+                        + std::to_string(_access_ctr->get_all_writer_ct());
+                    st.Add(s);
+#endif
                 }
 
                 self_type operator++(int)
                 {
                     self_type iter = *this;
                     _ptr++;
+#ifdef DEMO
                     std::this_thread::sleep_for(_pause);
+#endif
                     return iter;
                 }
 
                 self_type& operator++() 
                 {
                     _ptr++;
+#ifdef DEMO
                     std::this_thread::sleep_for(_pause);
+#endif
                     return *this;
                 }
-                reference operator*() 
-                {
-                    return *_ptr;
-                }
-                pointer operator->() 
-                {
-                    return _ptr;
-                }
+                reference operator*() { return *_ptr; }
+                pointer operator->() { return _ptr; }
                 difference_type operator-(const self_type& rhs)
-                {
-                    return _ptr - rhs._ptr;
-                }
+                { return _ptr - rhs._ptr; }
                 bool operator==(const self_type& rhs)
-                {
-                    return _ptr == rhs._ptr;
-                }
+                { return _ptr == rhs._ptr; }
                 bool operator!=(const self_type& rhs)
-                {
-                    return !(*this == rhs);
-                }
+                { return !(*this == rhs); }
 
             private:
                 void _copy_data(const safe_iterator& other)
                 {
                     _ptr = other._ptr;
                     _access_ctr = other._access_ctr;
-                    _writer_cv = other._writer_cv;
+                    _cond_var = other._cond_var;
                     _pause = other._pause;
                     _iter_mode = other._iter_mode;
+                    _mutex = other._mutex;
                 }
                 void _update_counters(int update)
                 {
@@ -192,30 +200,35 @@ class SafeArray
                             break;
                     }
 #ifdef DEBUG_SAFE
-                    const std::string s = "Reader ct: " 
-                        + std::to_string(_access_ctr->get_reader_ct())
-                        + ", writer ct: "
-                        + std::to_string(_access_ctr->get_writer_ct());
+                    const std::string s = "Current thd reader, writer cts: " 
+                        + std::to_string(_access_ctr->get_all_reader_ct())
+                        + ","
+                        + std::to_string(_access_ctr->get_all_writer_ct());
                     st.Add(s);
 #endif
                 }
 
                 pointer _ptr;
-                std::shared_ptr<AccessCtr> _access_ctr;
-                std::condition_variable* _writer_cv;
+                AccessCtrPtr _access_ctr;
+                CondVarPtr _cond_var;
                 std::chrono::milliseconds _pause;
                 ITER_MODE _iter_mode;
+                std::mutex* _mutex;
         };
 
         SafeArray(size_type size) 
             : _size(size),
             _access_ctr{ new AccessCtr() },
+            _cond_var{ new std::condition_variable() },
             _data{ new T[size] }
         {
 #ifdef DEBUG_SAFE
             ScopeTracker st{"SafeArray"};
 #endif
         }
+
+        SafeArray(const SafeArray&) = delete;
+        SafeArray& operator=(const SafeArray&) = delete;
 
         ~SafeArray()
         {
@@ -288,31 +301,30 @@ class SafeArray
         safe_iterator safe_rw_iterator(size_type offset)
         {
             std::unique_lock<std::mutex> lock{_mutex};
-            _cond_var.wait(lock, [this]{
-                    return !_access_ctr->get_has_other_writers()
-                            && !_access_ctr->get_has_other_readers();
+            _cond_var->wait(lock, [this]{
+                    return !_access_ctr->get_has_other_accessors();
                     });
             safe_iterator safe_iter = safe_iterator{_data+offset, _cond_var,
-                _access_ctr, safe_iterator::ITER_MODE::READ_WRITE};
+                _access_ctr, _mutex, safe_iterator::ITER_MODE::READ_WRITE};
             return safe_iter;
         }
         safe_iterator safe_read_iterator(size_type offset)
         {
             std::unique_lock<std::mutex> lock{_mutex};
-            _cond_var.wait(lock, [this]{
+            _cond_var->wait(lock, [this]{
                     return !_access_ctr->get_has_other_writers();
                     });
             safe_iterator safe_iter = safe_iterator{_data+offset, _cond_var,
-                _access_ctr};
+                _access_ctr, _mutex};
             return safe_iter;
         }
 
         T* _data;
         size_type _size;
 
-        std::shared_ptr<AccessCtr> _access_ctr;
+        AccessCtrPtr _access_ctr;
 
-        mutable std::condition_variable _cond_var;
+        mutable CondVarPtr _cond_var;
         mutable std::mutex _mutex;
 };
 

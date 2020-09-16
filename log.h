@@ -14,18 +14,6 @@ class Log
             return *_instance;
         }
 
-/*        std::ostream& operator<<(std::ostream& mesg)
-        {
-            std::lock_guard<std::mutex> lock{_mutex};
-            return _ostm << mesg;
-        }
-
-        std::ostream& operator<<(std::string const& mesg)
-        {
-            std::lock_guard<std::mutex> lock{_mutex};
-            return _ostm << mesg;
-        }
-*/
         void add(std::string const& mesg)
         {
             _buffer += mesg;

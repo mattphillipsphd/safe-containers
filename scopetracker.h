@@ -12,11 +12,11 @@
 class ScopeTracker
 {
     public:
-        ScopeTracker( const std::string&& name,
+        ScopeTracker( const std::string& name,
                 std::thread::id tid=std::this_thread::get_id() )
             : _name(name),
             _startTime(std::chrono::steady_clock::now()),
-            _tab(MakeTab(tid)),
+            _tab(_make_tab(tid)),
             _tid(tid),
             _log{ Log::instance() }
         {
@@ -25,6 +25,8 @@ class ScopeTracker
             const std::string s = ss.str() + _tab + "Entered " + _name;
             _log.write(s);
             std::lock_guard<std::mutex> lock(_mutex);
+            if ( !_tabCts.contains(tid) )
+                _tabCts[tid] = 0;
             ++_tabCts[_tid];
         }
 
@@ -34,25 +36,18 @@ class ScopeTracker
             ss << _tid;
             const std::string s = ss.str() + _tab + "Exited " 
                 + _name + _add + " after " 
-                + std::to_string(ElapsedMs()) + "ms";
+                + std::to_string(elapsed_ms()) + "ms";
             _log.write(s);
             std::lock_guard<std::mutex> lock(_mutex);
             --_tabCts[_tid];
         }
 
-        static void InitThread(std::thread::id tid=std::this_thread::get_id())
-        {
-            std::lock_guard<std::mutex> lock(_mutex);
-            if ( !_tabCts.contains(tid) )
-                _tabCts[tid] = 0;
-        }
-
-        void Add(const std::string& mesg) //For adding milestones
+        void add(const std::string& mesg) //For adding milestones
         {
             _add += ", " + mesg;
         }
 
-        int ElapsedMs() const
+        int elapsed_ms() const
         {
             return std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - _startTime).count();
@@ -60,7 +55,7 @@ class ScopeTracker
         
 
     private:
-        inline std::string MakeTab(std::thread::id tid)
+        inline std::string _make_tab(std::thread::id tid)
         {
             return std::string(1+_tabCts[tid]*4, ' ');
         }

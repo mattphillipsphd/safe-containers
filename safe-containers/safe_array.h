@@ -10,30 +10,41 @@
 
 #include "access_ctr.h"
 
+#ifdef DEBUG_ACCESS
+    #define FUNC_LOGGING() ScopeTracker st{__func__}
+#else
+    #define FUNC_LOGGING() 0
+#endif
+
 using namespace std::chrono_literals;
+
+namespace sa
+{
 
 template <typename T>
 class SafeArray
 {
     public:
+        class SafeIterator;
 
         typedef int size_type;
         typedef std::atomic<int> count_type;
         typedef std::atomic<bool> flag_type;
         typedef std::shared_ptr<AccessCtr> AccessCtrPtr;
         typedef std::shared_ptr<std::condition_variable> CondVarPtr;
+        typedef SafeIterator iterator;
         using thread_id = AccessCtr::thread_id;
 
-        class iterator
+        class Iterator
         {
             public:
-                typedef iterator self_type;
+                typedef Iterator self_type;
                 typedef T value_type;
                 typedef T& reference;
                 typedef T* pointer;
                 typedef std::forward_iterator_tag iterator_category;
                 typedef int difference_type;
-                iterator(pointer ptr) 
+                Iterator(pointer ptr) 
                     : _ptr(ptr),
                     _pause{50}
                 {}
@@ -76,7 +87,7 @@ class SafeArray
         };
         // We'll worry about const_iterator later
         
-        class safe_iterator
+        class SafeIterator
         {
             public:
                 enum class ITER_MODE
@@ -86,14 +97,14 @@ class SafeArray
                     READ_WRITE
                 };
 
-                typedef safe_iterator self_type;
+                typedef SafeIterator self_type;
                 typedef T value_type;
                 typedef T& reference;
                 typedef T* pointer;
                 typedef std::forward_iterator_tag iterator_category;
                 typedef int difference_type;
 
-                safe_iterator(pointer ptr, CondVarPtr cond_var,
+                SafeIterator(pointer ptr, CondVarPtr cond_var,
                         AccessCtrPtr access_ctr, std::mutex& mutex,
                         ITER_MODE iter_mode=ITER_MODE::READ) 
                     : _ptr(ptr),
@@ -103,36 +114,28 @@ class SafeArray
                     _iter_mode{iter_mode},
                     _mutex{&mutex}
                 {
-#ifdef DEBUG_SAFE
-                    ScopeTracker st{"safe_iterator::safe_iterator"};
-#endif
+                    FUNC_LOGGING();
                     _access_ctr->add_thread();
                     _update_counters(1);
                 }
 
-                safe_iterator(const safe_iterator& rhs) 
+                SafeIterator(const SafeIterator& rhs) 
                 {
-#ifdef DEBUG_SAFE
-                    ScopeTracker st{"safe_iterator::<copy ctor>"};
-#endif
+                    FUNC_LOGGING();
                     _copy_data(rhs);
                     _update_counters(1);
                 }
-                safe_iterator(safe_iterator&&) = delete;
-                safe_iterator& operator=(const safe_iterator& rhs)
+                SafeIterator(SafeIterator&&) = delete;
+                SafeIterator& operator=(const SafeIterator& rhs)
                 {
-#ifdef DEBUG_SAFE
-                    ScopeTracker st{"safe_iterator::operator="};
-#endif
+                    FUNC_LOGGING();
                     _copy_data(rhs);
                     _update_counters(1);
                 }
-                safe_iterator& operator=(safe_iterator&&) = delete;
-                ~safe_iterator()
+                SafeIterator& operator=(SafeIterator&&) = delete;
+                ~SafeIterator()
                 {
-#ifdef DEBUG_SAFE
-                    ScopeTracker st{"safe_iterator::~safe_iterator"};
-#endif
+                    FUNC_LOGGING();
                     std::lock_guard<std::mutex> lock{ *_mutex };
                     _update_counters(-1);
                     _cond_var->notify_all();
@@ -141,7 +144,7 @@ class SafeArray
                         + std::to_string(_access_ctr->get_all_reader_ct())
                         + ","
                         + std::to_string(_access_ctr->get_all_writer_ct());
-                    st.Add(s);
+                    st.add(s);
 #endif
                 }
 
@@ -165,15 +168,17 @@ class SafeArray
                 }
                 reference operator*() { return *_ptr; }
                 pointer operator->() { return _ptr; }
-                difference_type operator-(const self_type& rhs)
+                difference_type operator-(const self_type& rhs) const
                 { return _ptr - rhs._ptr; }
-                bool operator==(const self_type& rhs)
+                bool operator<(const self_type& rhs) const
+                { return *_ptr < *rhs._ptr; }
+                bool operator==(const self_type& rhs) const
                 { return _ptr == rhs._ptr; }
-                bool operator!=(const self_type& rhs)
+                bool operator!=(const self_type& rhs) const
                 { return !(*this == rhs); }
 
             private:
-                void _copy_data(const safe_iterator& other)
+                void _copy_data(const SafeIterator& other)
                 {
                     _ptr = other._ptr;
                     _access_ctr = other._access_ctr;
@@ -184,9 +189,7 @@ class SafeArray
                 }
                 void _update_counters(int update)
                 {
-#ifdef DEBUG_SAFE
-                    ScopeTracker st{"safe_iterator::_update_counters"};
-#endif
+                    FUNC_LOGGING();
                     switch (_iter_mode)
                     {
                         case ITER_MODE::READ:
@@ -204,7 +207,7 @@ class SafeArray
                         + std::to_string(_access_ctr->get_all_reader_ct())
                         + ","
                         + std::to_string(_access_ctr->get_all_writer_ct());
-                    st.Add(s);
+                    st.add(s);
 #endif
                 }
 
@@ -222,9 +225,7 @@ class SafeArray
             _cond_var{ new std::condition_variable() },
             _data{ new T[size] }
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker st{"SafeArray"};
-#endif
+            FUNC_LOGGING();
         }
 
         SafeArray(const SafeArray&) = delete;
@@ -232,9 +233,7 @@ class SafeArray
 
         ~SafeArray()
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker st{"~SafeArray"};
-#endif
+            FUNC_LOGGING();
             delete[] _data;
         }
 
@@ -248,73 +247,59 @@ class SafeArray
             return _data[index];
         }
 
-        iterator unsafe_begin() { return iterator(_data); }
-        iterator unsafe_end() { return iterator(_data + _size); }
+        Iterator unsafe_begin() { return Iterator(_data); }
+        Iterator unsafe_end() { return Iterator(_data + _size); }
 
-        safe_iterator cbegin() 
+        SafeIterator cbegin() 
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker::InitThread();
-            ScopeTracker st{"cbegin"};
-#endif
+            FUNC_LOGGING();
             return safe_read_iterator(0);
         }
-        safe_iterator cend() 
+        SafeIterator cend() 
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker st{"cend"};
-#endif
+            FUNC_LOGGING();
             return safe_read_iterator(_size);
         }
-        safe_iterator begin() 
+        SafeIterator begin() 
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker::InitThread();
-            ScopeTracker st{"begin"};
-#endif
+            FUNC_LOGGING();
             return safe_rw_iterator(0);
         }
-        safe_iterator end() 
+        SafeIterator end() 
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker st{"end"};
-#endif
+            FUNC_LOGGING();
             return safe_rw_iterator(_size);
         }
 
         int get_writer_ct() const 
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker st{"get_writer_ct"};
-#endif
+            FUNC_LOGGING();
             return _access_ctr->get_writer_ct();
         }
         int get_reader_ct() const 
         {
-#ifdef DEBUG_SAFE
-            ScopeTracker st{"get_reader_ct"};
-#endif
+            FUNC_LOGGING();
             return _access_ctr->get_reader_ct();
         }
 
     private:
-        safe_iterator safe_rw_iterator(size_type offset)
+        SafeIterator safe_rw_iterator(size_type offset)
         {
             std::unique_lock<std::mutex> lock{_mutex};
             _cond_var->wait(lock, [this]{
                     return !_access_ctr->get_has_other_accessors();
                     });
-            safe_iterator safe_iter = safe_iterator{_data+offset, _cond_var,
-                _access_ctr, _mutex, safe_iterator::ITER_MODE::READ_WRITE};
+            SafeIterator safe_iter = SafeIterator{_data+offset, _cond_var,
+                _access_ctr, _mutex, SafeIterator::ITER_MODE::READ_WRITE};
             return safe_iter;
         }
-        safe_iterator safe_read_iterator(size_type offset)
+        SafeIterator safe_read_iterator(size_type offset)
         {
             std::unique_lock<std::mutex> lock{_mutex};
             _cond_var->wait(lock, [this]{
                     return !_access_ctr->get_has_other_writers();
                     });
-            safe_iterator safe_iter = safe_iterator{_data+offset, _cond_var,
+            SafeIterator safe_iter = SafeIterator{_data+offset, _cond_var,
                 _access_ctr, _mutex};
             return safe_iter;
         }
@@ -327,5 +312,22 @@ class SafeArray
         mutable CondVarPtr _cond_var;
         mutable std::mutex _mutex;
 };
+
+} // sa
+
+/*
+template<typename T>
+sa::SafeArray<T>::SafeIterator begin(sa::SafeArray<T>& safe_array)
+{
+    return safe_array.begin();
+}
+template<typename T>
+sa::SafeArray<T>::SafeIterator end(sa::SafeArray<T>& safe_array)
+{
+    return safe_array.end();
+}
+*/
+
+#undef FUNC_LOGGING
 
 #endif // SAFE_ARRAY_H

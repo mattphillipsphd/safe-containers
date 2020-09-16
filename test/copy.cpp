@@ -12,7 +12,7 @@ int main(int argc, char** argv)
 {
     const int N = (argc > 1) ? std::stoi( argv[1] ) : 20;
 
-    using SA = SafeArray<int>;
+    using SA = sa::SafeArray<int>;
     SA sa{N};
 
     // Initialize

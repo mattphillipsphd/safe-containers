@@ -21,6 +21,8 @@ using namespace std::chrono_literals;
 namespace sa
 {
 
+// Starting off modifying https://gist.github.com/jeetsukumaran/307264
+
 template <typename T>
 class SafeArray
 {

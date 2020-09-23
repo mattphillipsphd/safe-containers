@@ -13,8 +13,6 @@
 
 using namespace std::chrono_literals;
 
-// Starting off modifying https://gist.github.com/jeetsukumaran/307264
-
 template<class T>unsigned char identify(T&& v) {return v;}
 
 // g++-10 -std=c++20 -pthread safe_iter.cpp -o ~/bin/safety/safe_iter
@@ -47,7 +45,6 @@ int main(int argc, char** argv)
     write.join();
     read.join();
     std::cout << "...Done" << std::endl;
-
 
     auto safe_writer = [&sa, &log]
     { 

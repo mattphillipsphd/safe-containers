@@ -32,6 +32,7 @@ class SafeArray
         typedef int size_type;
         typedef std::atomic<int> count_type;
         typedef std::atomic<bool> flag_type;
+        typedef T value_type;
         typedef std::shared_ptr<AccessCtr> AccessCtrPtr;
         typedef std::shared_ptr<std::condition_variable> CondVarPtr;
         typedef SafeIterator iterator;

@@ -1,76 +1,105 @@
 #include <iostream>
+#include <type_traits>
 
 #include "../safe-containers/safe_array.h"
 
-/*
-#define define_has_member(member_name)                                         \
-    template <typename T>                                                      \
-    class has_member_##member_name                                             \
-    {                                                                          \
-        typedef char yes_type;                                                 \
-        typedef long no_type;                                                  \
-        template <typename U> static yes_type test(decltype(&U::member_name)); \
-        template <typename U> static no_type  test(...);                       \
-    public:                                                                    \
-        static constexpr bool value = sizeof(test<T>(0)) == sizeof(yes_type);  \
-    }
-*/
+template<class T>
+decltype(auto) identify(T&& v); 
 
-class C
+class B
 {
     public:
-        C& operator[](size_t index)
+        typedef int value_type;
+        B() 
         {
-            return *this;
+            _d = new int[10]; 
+            for (int i=0; i<10; ++i)
+                _d[i] = i;
+        }
+        B(const B& other)
+        {
+            _d = new int[10]; 
+            for (int i=0; i<10; ++i)
+                _d[i] = other._d[i];
+        }
+        ~B() { delete[] _d; }
+    protected:
+        int* _d;
+};
+
+class C : public B
+{
+    public:
+        int& operator[](size_t index)
+        {
+            return _d[index];
         }
         void f() { std::cout << "Hooray" << std::endl; }
 };
 
-class D
+class D : public B
 {
     public:
-/*        C& operator[](size_t index)
+        const int& operator[](size_t index) const
         {
-            return *this;
+            return _d[index];
         }
-*/
 };
 
 
-/*
-template<typename T>
-class has_nc_op
+template <typename T, typename = void>
+struct has_nc_op : std::false_type
 {
-    using V = decltype(&T::operator[]);
-    public:
-        static constexpr int value = sizeof(V);
-//        static constexpr bool value = sizeof(
+};
+
+/*
+template <typename T>
+struct has_nc_op<T, decltype(&T::operator[], void())> : std::true_type 
+{
 };
 */
-/*
-template <typename T, typename = void>
-struct has_nc_op : std::false_type{};
 
 template <typename T>
-struct has_nc_op<T, decltype((void)T::member, void())> : std::true_type {};
-*/
+struct has_nc_op<T, decltype(&T::operator[], void())> : std::true_type 
+{
+};
 
-template <typename T, typename = void>
-struct has_nc_op : std::false_type {};
+template<typename T>
+concept RandomWrite = has_nc_op<T>::value \
+                      && std::is_same<decltype(&T::operator[]),
+        typename T::value_type& (T::*)(size_t)>::value;
 
-template <typename T>
-struct has_nc_op<T, decltype(&T::f, void())> : std::true_type {};
-//struct has_nc_op<T, decltype((void)T::f, void())> : std::true_type {};
+int first(RandomWrite auto cont)
+{
+    return cont[4];
+}
 
-struct yay : std::true_type {};
+template<typename T>
+auto h(T a) -> double
+{
+    return a*a;
+}
 
 int main(void)
 {
+    /*
     has_nc_op<C> valC;
     has_nc_op<D> valD;
-    decltype(&C::f) v; 
     std::cout << valC << ", " << valD << std::endl;
     std::cout << has_nc_op<C>::value << std::endl;
     std::cout << has_nc_op<D>::value << std::endl;
+    */
+
+    C c;
+    D d;
+    std::cout << first(c) << std::endl;
+//    std::cout << first(d) << std::endl;
+
+    decltype(&C::operator[]) m;
+    int& (C::* j)(size_t);
+//    identify(j);
+    std::cout << h(6.3) << std::endl;
+
+    sa::SafeArray<int> s{50};
     return 0;
 }

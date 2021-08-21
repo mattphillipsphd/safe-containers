@@ -1,5 +1,6 @@
-// A simple example of producer/consumer code that doesn't use while(1), 
-// while(true) etc. loops
+// A simple standalone example of producer/consumer code that doesn't use 
+// while(1), while(true) etc. loops.  The key idea though is the use of a 
+// condition variable
 
 #include <atomic>
 #include <chrono>
@@ -49,8 +50,8 @@ class Consumer
 
         void add_message(const std::string& message)
         {
-            std::cout << "Consumer::add_message" << std::endl;
             std::unique_lock<std::mutex> lock{_mutex};
+            std::cout << "Consumer::add_message" << std::endl;
             _messages.push(message);
             data_available = true;
             _cond_var.notify_all();

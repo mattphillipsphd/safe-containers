@@ -39,6 +39,7 @@ class MessageStore
         VecStr consume_messages()
         {
             std::unique_lock<std::mutex> lock{_mutex};
+            std::cout << "MessageStore::consume_messages" << std::endl;
             VecStr vec_str;
             while ( !_messages.empty() )
             {
@@ -49,7 +50,7 @@ class MessageStore
             return vec_str;
         }
 
-        void wait_for_messages()
+        void wait_for_messages() const
         {
             std::unique_lock<std::mutex> lock{_mutex};
             _cond_var.wait(lock, [this]{ return _data_available.load(); });
@@ -80,7 +81,7 @@ class MessageStore
         bool _is_all_done;
         std::queue<std::string> _messages;
         mutable std::mutex _mutex;
-        std::condition_variable _cond_var;
+        mutable std::condition_variable _cond_var;
 };
 MessageStore* MessageStore::_instance{nullptr};
 

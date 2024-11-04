@@ -20,6 +20,8 @@ using namespace std::chrono_literals;
 
 namespace sa
 {
+namespace v1
+{
 
 // Starting off modifying https://gist.github.com/jeetsukumaran/307264
 
@@ -314,7 +316,8 @@ class SafeArray
 
         mutable CondVarPtr _cond_var;
         mutable std::mutex _mutex;
-};
+    };
+}
 
 } // sa
 

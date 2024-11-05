@@ -15,7 +15,7 @@ using namespace std::chrono_literals;
 
 template<class T>unsigned char identify(T&& v) {return v;}
 
-// g++-10 -std=c++20 -pthread safe_iter.cpp -o ~/bin/safety/safe_iter
+// g++ -std=c++20 -pthread safe_iter.cpp -o ~/bin/safety/safe_iter
 int main(int argc, char** argv)
 {
     const int N = (argc > 1) ? std::stoi( argv[1] ) : 20;

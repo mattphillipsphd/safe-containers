@@ -20,8 +20,8 @@ using namespace std::chrono_literals;
 
 namespace sa
 {
-namespace v1
-{
+//namespace v1
+//{
 
 // Starting off modifying https://gist.github.com/jeetsukumaran/307264
 
@@ -128,6 +128,7 @@ class SafeArray
                 {
                     FUNC_LOGGING();
                     _copy_data(rhs);
+                    _access_ctr->add_thread();
                     _update_counters(1);
                 }
                 SafeIterator(SafeIterator&&) = delete;
@@ -135,6 +136,7 @@ class SafeArray
                 {
                     FUNC_LOGGING();
                     _copy_data(rhs);
+                    _access_ctr->add_thread();
                     _update_counters(1);
                 }
                 SafeIterator& operator=(SafeIterator&&) = delete;
@@ -185,6 +187,7 @@ class SafeArray
             private:
                 void _copy_data(const SafeIterator& other)
                 {
+                    FUNC_LOGGING();
                     _ptr = other._ptr;
                     _access_ctr = other._access_ctr;
                     _cond_var = other._cond_var;
@@ -255,12 +258,12 @@ class SafeArray
         Iterator unsafe_begin() { return Iterator(_data); }
         Iterator unsafe_end() { return Iterator(_data + _size); }
 
-        SafeIterator cbegin() 
+        SafeIterator cbegin() const 
         {
             FUNC_LOGGING();
             return safe_read_iterator(0);
         }
-        SafeIterator cend() 
+        SafeIterator cend() const
         {
             FUNC_LOGGING();
             return safe_read_iterator(_size);
@@ -294,19 +297,16 @@ class SafeArray
             _cond_var->wait(lock, [this]{
                     return !_access_ctr->get_has_other_accessors();
                     });
-            SafeIterator safe_iter = SafeIterator{_data+offset, _cond_var,
+            return SafeIterator{_data+offset, _cond_var,
                 _access_ctr, _mutex, SafeIterator::ITER_MODE::READ_WRITE};
-            return safe_iter;
         }
-        SafeIterator safe_read_iterator(size_type offset)
+        SafeIterator safe_read_iterator(size_type offset) const
         {
             std::unique_lock<std::mutex> lock{_mutex};
             _cond_var->wait(lock, [this]{
                     return !_access_ctr->get_has_other_writers();
                     });
-            SafeIterator safe_iter = SafeIterator{_data+offset, _cond_var,
-                _access_ctr, _mutex};
-            return safe_iter;
+            return SafeIterator{_data+offset, _cond_var, _access_ctr, _mutex};
         }
 
         T* _data;
@@ -317,7 +317,7 @@ class SafeArray
         mutable CondVarPtr _cond_var;
         mutable std::mutex _mutex;
     };
-}
+//}
 
 } // sa
 

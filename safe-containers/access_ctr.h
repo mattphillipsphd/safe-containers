@@ -9,7 +9,7 @@
 #include "../scopetracker.h"
 
 #ifdef DEBUG_ACCESS
-    #define FUNC_LOGGING() ScopeTracker st{__func__}
+    #define FUNC_LOGGING() ScopeTracker scope_tracker{__func__}
 #else
     #define FUNC_LOGGING() 0
 #endif
@@ -32,7 +32,8 @@ class AccessCtr
             if ( !_dict.contains(tid) )
                 _dict.emplace( std::make_pair(tid, Counters()) );
 #ifdef DEBUG_ACCESS
-            st.add(std::to_string(_dict.size())+" threads in Access Counter");
+            scope_tracker.add(std::to_string(_dict.size())
+                    +" threads in Access Counter");
 #endif
         }
         void remove_thread( thread_id tid=std::this_thread::get_id() )

@@ -16,6 +16,8 @@ using namespace std::chrono_literals;
 
 template<class T>unsigned char identify(T&& v) {return v;}
 
+constexpr int NUM_TEST_ITERS = 10;
+
 void print_sc(const SafeChars& sc)
 {
     std::string s;
@@ -35,27 +37,13 @@ void print_sc(const IterType& cbegin, const IterType& cend)
     std::cout << s << std::endl;
 }
 
-void to_ones(SafeChars& safe_chars)
+void broadcast2(SafeChars& safe_chars, char c)
 {
-    for (int i=0; i<15; ++i)
+    for (int i=0; i<NUM_TEST_ITERS; ++i)
     {
         for (auto it=safe_chars.begin(); it!=safe_chars.end(); ++it)
         {
-            *it = '1';
-            std::this_thread::sleep_for(std::chrono::milliseconds(3));
-        }
-
-        print_sc(safe_chars);
-    }
-}
-
-void to_nines(SafeChars& safe_chars)
-{
-    for (int i=0; i<15; ++i)
-    {
-        for (auto it=safe_chars.begin(); it!=safe_chars.end(); ++it)
-        {
-            *it = '9';
+            *it = c;
             std::this_thread::sleep_for(std::chrono::milliseconds(3));
         }
 
@@ -66,7 +54,7 @@ void to_nines(SafeChars& safe_chars)
 template<typename IterType>
 void broadcast(IterType& begin, IterType& end, char c)
 {
-    for (int i=0; i<15; ++i)
+    for (int i=0; i<NUM_TEST_ITERS; ++i)
     {
         for (auto it=begin; it!=end; ++it)
         {
@@ -98,12 +86,11 @@ int main(int argc, char** argv)
 
     std::cout << "Starting SAFE iteration test..." << std::endl;
 
-    auto begin = safe_chars.begin();
-    auto end = safe_chars.end();
-    std::thread t1{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
-        std::ref(end), '1'};
-    std::thread t2{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
-        std::ref(end), '9'};
+    std::thread t1{broadcast2, std::ref(safe_chars), 
+//    std::thread t1{broadcast<SafeChars::SafeIterator>,  std::ref(safe_chars), 
+        '1'};
+    std::thread t2{broadcast2, std::ref(safe_chars), 
+        '9'};
     
     t1.join();
     t2.join();
@@ -123,8 +110,18 @@ int main(int argc, char** argv)
     t3.join();
     t4.join();
 
-    std::cout << "...iterator test complete!  Output should be jumbled 1s and 9s" 
-        << std::endl;
+    std::cout << "...iterator test complete!  Output should be jumbled 1s "\
+        "and 9s\n\n" << std::endl;
 
+    std::cout << "This should trigger an assert:\n" << std::endl;
+    auto begin = safe_chars.begin();
+    auto end = safe_chars.end();
+    std::thread t5{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
+        std::ref(end), '1'};
+    std::thread t6{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
+        std::ref(end), '9'};
+    
+    t5.join();
+    t6.join();
     return 0;
 }

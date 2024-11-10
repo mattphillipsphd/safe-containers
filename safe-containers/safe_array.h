@@ -11,7 +11,7 @@
 #include "access_ctr.h"
 
 #ifdef DEBUG_ACCESS
-    #define FUNC_LOGGING() ScopeTracker st{__func__}
+    #define FUNC_LOGGING() ScopeTracker scope_tracker{__func__}
 #else
     #define FUNC_LOGGING() 0
 #endif
@@ -117,7 +117,8 @@ class SafeArray
                     _cond_var{cond_var},
                     _pause{50},
                     _iter_mode{iter_mode},
-                    _mutex{&mutex}
+                    _mutex{&mutex},
+                    _tid{ std::this_thread::get_id() }
                 {
                     FUNC_LOGGING();
                     _access_ctr->add_thread();
@@ -131,7 +132,8 @@ class SafeArray
                     _access_ctr->add_thread();
                     _update_counters(1);
                 }
-                SafeIterator(SafeIterator&&) = delete;
+                SafeIterator(SafeIterator&&) = delete; 
+                    // Really no reason to delete this
                 SafeIterator& operator=(const SafeIterator& rhs)
                 {
                     FUNC_LOGGING();
@@ -151,12 +153,13 @@ class SafeArray
                         + std::to_string(_access_ctr->get_all_reader_ct())
                         + ","
                         + std::to_string(_access_ctr->get_all_writer_ct());
-                    st.add(s);
+                    scope_tracker.add(s);
 #endif
                 }
 
                 self_type operator++(int)
                 {
+                    assert( std::this_thread::get_id() == _tid );
                     self_type iter = *this;
                     _ptr++;
 #ifdef DEMO
@@ -167,14 +170,23 @@ class SafeArray
 
                 self_type& operator++() 
                 {
+                    assert( std::this_thread::get_id() == _tid );
                     _ptr++;
 #ifdef DEMO
                     std::this_thread::sleep_for(_pause);
 #endif
                     return *this;
                 }
-                reference operator*() { return *_ptr; }
-                pointer operator->() { return _ptr; }
+                reference operator*() 
+                {
+                    assert( std::this_thread::get_id() == _tid );
+                    return *_ptr;
+                }
+                pointer operator->() 
+                {
+                    assert( std::this_thread::get_id() == _tid );
+                    return _ptr;
+                }
                 difference_type operator-(const self_type& rhs) const
                 { return _ptr - rhs._ptr; }
                 bool operator<(const self_type& rhs) const
@@ -194,6 +206,7 @@ class SafeArray
                     _pause = other._pause;
                     _iter_mode = other._iter_mode;
                     _mutex = other._mutex;
+                    _tid = other._tid;
                 }
                 void _update_counters(int update)
                 {
@@ -215,7 +228,7 @@ class SafeArray
                         + std::to_string(_access_ctr->get_all_reader_ct())
                         + ","
                         + std::to_string(_access_ctr->get_all_writer_ct());
-                    st.add(s);
+                    scope_tracker.add(s);
 #endif
                 }
 
@@ -225,6 +238,7 @@ class SafeArray
                 std::chrono::milliseconds _pause;
                 ITER_MODE _iter_mode;
                 std::mutex* _mutex;
+                thread_id _tid;
         };
 
         SafeArray(size_type size) 

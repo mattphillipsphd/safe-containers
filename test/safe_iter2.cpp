@@ -37,11 +37,26 @@ void print_sc(const IterType& cbegin, const IterType& cend)
     std::cout << s << std::endl;
 }
 
-void broadcast2(SafeChars& safe_chars, char c)
+void broadcast(SafeChars& safe_chars, char c)
 {
     for (int i=0; i<NUM_TEST_ITERS; ++i)
     {
         for (auto it=safe_chars.begin(); it!=safe_chars.end(); ++it)
+        {
+            *it = c;
+            std::this_thread::sleep_for(std::chrono::milliseconds(3));
+        }
+
+        print_sc(safe_chars);
+    }
+}
+
+void broadcast_unsafe(SafeChars& safe_chars, char c)
+{
+    for (int i=0; i<NUM_TEST_ITERS; ++i)
+    {
+        for (auto it=safe_chars.unsafe_begin(); it!=safe_chars.unsafe_end();
+                ++it)
         {
             *it = c;
             std::this_thread::sleep_for(std::chrono::milliseconds(3));
@@ -86,26 +101,31 @@ int main(int argc, char** argv)
 
     std::cout << "Starting SAFE iteration test..." << std::endl;
 
-    std::thread t1{broadcast2, std::ref(safe_chars), 
-//    std::thread t1{broadcast<SafeChars::SafeIterator>,  std::ref(safe_chars), 
+    std::thread t1{
+        static_cast<void(*)(SafeChars&, char)>(&broadcast),
+        std::ref(safe_chars), 
         '1'};
-    std::thread t2{broadcast2, std::ref(safe_chars), 
+    std::thread t2{
+        static_cast<void(*)(SafeChars&, char)>(&broadcast),
+        std::ref(safe_chars), 
         '9'};
     
     t1.join();
     t2.join();
 
-    std::cout << "...iterator test complete!  Output should be uniformly 1s " \
-        "or 9s\n\n" << std::endl;
+    std::cout << "...iterator test complete!  Output should be uniform rows " \
+       "of 1s and 9s\n\n" << std::endl;
 
-    std::cout << "Starting UNSAFE iteration test..." << std::endl;
+    std::cout << "Starting UNSAFE iteration test #1..." << std::endl;
 
-    auto unsafe_begin = safe_chars.unsafe_begin();
-    auto unsafe_end = safe_chars.unsafe_end();
-    std::thread t3{broadcast<SafeChars::Iterator>,  std::ref(unsafe_begin), 
-        std::ref(unsafe_end), '1'};
-    std::thread t4{broadcast<SafeChars::Iterator>,  std::ref(unsafe_begin), 
-        std::ref(unsafe_end), '9'};
+    std::thread t3{
+        static_cast<void(*)(SafeChars&, char)>(&broadcast_unsafe),
+        std::ref(safe_chars), 
+        '1'};
+    std::thread t4{
+        static_cast<void(*)(SafeChars&, char)>(&broadcast_unsafe),
+        std::ref(safe_chars), 
+        '9'};
     
     t3.join();
     t4.join();
@@ -113,15 +133,31 @@ int main(int argc, char** argv)
     std::cout << "...iterator test complete!  Output should be jumbled 1s "\
         "and 9s\n\n" << std::endl;
 
-    std::cout << "This should trigger an assert:\n" << std::endl;
-    auto begin = safe_chars.begin();
-    auto end = safe_chars.end();
-    std::thread t5{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
-        std::ref(end), '1'};
-    std::thread t6{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
-        std::ref(end), '9'};
+    std::cout << "Starting UNSAFE iteration test #2..." << std::endl;
+
+    auto unsafe_begin = safe_chars.unsafe_begin();
+    auto unsafe_end = safe_chars.unsafe_end();
+    std::thread t5{broadcast<SafeChars::Iterator>,  std::ref(unsafe_begin), 
+        std::ref(unsafe_end), '1'};
+    std::thread t6{broadcast<SafeChars::Iterator>,  std::ref(unsafe_begin), 
+        std::ref(unsafe_end), '9'};
     
     t5.join();
     t6.join();
+
+    std::cout << "...iterator test complete!  Output should be jumbled 1s "\
+        "and 9s\n\n" << std::endl;
+
+    std::cout << "Attempting to use safe iterators in an unsafe way.  This " \
+       " should trigger an assert:\n" << std::endl;
+    auto begin = safe_chars.begin();
+    auto end = safe_chars.end();
+    std::thread t7{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
+        std::ref(end), '1'};
+    std::thread t8{broadcast<SafeChars::SafeIterator>,  std::ref(begin), 
+        std::ref(end), '9'};
+    
+    t7.join();
+    t8.join();
     return 0;
 }
